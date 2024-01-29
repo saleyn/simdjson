@@ -60,6 +60,11 @@ struct number {
    */
   simdjson_inline bool is_int64() const noexcept;
   /**
+   * return true if the automatically determined type of
+   * the number is number_type::big_integer.
+   */
+  simdjson_inline bool is_bigint() const noexcept;
+  /**
    * return the value as a int64_t, only valid if is_int64() is true.
    */
   simdjson_inline int64_t get_int64() const noexcept;

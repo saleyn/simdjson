@@ -48,6 +48,10 @@ simdjson_inline number::operator uint64_t() const noexcept {
   return get_uint64();
 }
 
+simdjson_inline number::is_bigint() const noexcept {
+  return get_number_type() == number_type::big_integer;
+}
+
 
 simdjson_inline bool number::is_int64() const noexcept {
   return get_number_type() == number_type::signed_integer;
