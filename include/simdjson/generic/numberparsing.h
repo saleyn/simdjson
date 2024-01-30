@@ -508,13 +508,25 @@ simdjson_inline error_code write_float(const uint8_t *const src, bool negative, 
   return SUCCESS;
 }
 
+template<typename W>
+simdjson_inline error_code parse_number(const uint8_t *const src, W &writer, bool &is_bigint, size_t &digit_count);
+
+template<typename W>
+simdjson_inline error_code parse_number(const uint8_t *const src, W &writer) {
+  size_t digit_count;
+  bool   is_bigint;
+  return parse_number<W>(src, writer, is_bigint, digit_count);
+}
+
 // for performance analysis, it is sometimes  useful to skip parsing
 #ifdef SIMDJSON_SKIPNUMBERPARSING
 
 template<typename W>
-simdjson_inline error_code parse_number(const uint8_t *const, W &writer) {
-  writer.append_s64(0);        // always write zero
-  return SUCCESS;              // always succeeds
+simdjson_inline error_code parse_number(const uint8_t *const, W &writer, bool &is_bigint, size_t &digit_count) {
+  digit_count = 0;
+  is_bigint   = false;
+  writer.append_s64(0);     // always write zero
+  return SUCCESS;           // always succeeds
 }
 
 simdjson_unused simdjson_inline simdjson_result<uint64_t> parse_unsigned(const uint8_t * const src) noexcept { return 0; }
@@ -538,7 +550,9 @@ simdjson_unused simdjson_inline simdjson_result<number_type> get_number_type(con
 //
 // Our objective is accurate parsing (ULP of 0) at high speed.
 template<typename W>
-simdjson_inline error_code parse_number(const uint8_t *const src, W &writer) {
+simdjson_inline error_code parse_number(const uint8_t *const src, W &writer, bool &is_bigint, size_t &digit_count) {
+
+  is_bigint = false;
 
   //
   // Check for minus sign
@@ -556,8 +570,10 @@ simdjson_inline error_code parse_number(const uint8_t *const src, W &writer) {
 
   // If there were no digits, or if the integer starts with 0 and has more than one digit, it's an error.
   // Optimization note: size_t is expected to be unsigned.
-  size_t digit_count = size_t(p - start_digits);
-  if (digit_count == 0 || ('0' == *start_digits && digit_count > 1)) { return INVALID_NUMBER(src); }
+  digit_count = size_t(p - start_digits);
+  if (digit_count == 0 || ('0' == *start_digits && digit_count > 1)) {
+    return INVALID_NUMBER(src);
+  }
 
   //
   // Handle floats if there is a . or e (or both)
@@ -586,11 +602,11 @@ simdjson_inline error_code parse_number(const uint8_t *const src, W &writer) {
   // The longest positive 64-bit number is 20 digits.
   // We do it this way so we don't trigger this branch unless we must.
   size_t longest_digit_count = negative ? 19 : 20;
-  if (digit_count > longest_digit_count) { return INVALID_NUMBER(src); }
+  if (digit_count > longest_digit_count) { is_bigint = true; return INVALID_NUMBER(src); }
   if (digit_count == longest_digit_count) {
     if (negative) {
       // Anything negative above INT64_MAX+1 is invalid
-      if (i > uint64_t(INT64_MAX)+1) { return INVALID_NUMBER(src);  }
+      if (i > uint64_t(INT64_MAX)+1) { is_bigint = true; return INVALID_NUMBER(src);  }
       WRITE_INTEGER(~i+1, src, writer);
       if (jsoncharutils::is_not_structural_or_whitespace(*p)) { return INVALID_NUMBER(src); }
       return SUCCESS;
